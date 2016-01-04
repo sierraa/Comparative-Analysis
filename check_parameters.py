@@ -84,7 +84,7 @@ def __check_general_parameters(gen_params):
         
     expected = ["metadata_header", "output_directory", "open_page", "to_html",
                 "interactive_plots", "abundance_sep", "metadata_sep", 
-                "normalization", "class_names", "metadata_label"]
+                "normalization", "class_names", "class_label"]
     
     for e in expected:
         if e not in gen_params: 
@@ -111,7 +111,7 @@ def __check_test(test_block):
             return False
     if test_type == "pca":
         if "number_of_loadings" not in test_block.params:
-            test_block.params["number_of_loadings"] == 0
+            test_block.params["number_of_loadings"] = 0
             return True
         elif test_block.params["number_of_loadings"] < 0 or test_block.params["number_of_loadings"] > 5:
             print(("Warning: Could not create PCA plot. Invalid number of loadings: " + str(test_block.params["number_of_loadings"])))
@@ -123,8 +123,8 @@ def __check_test(test_block):
         elif test_block.params["test"] not in supported_enrichment_tests:
             print(("Warning: Could not perform enrichment test. Enrichment test '" + test_block.params["test"] + "' not supported."))
             return False
-        if "multiple_hypothesis_correction" not in test_block.params:
-            test_block.params["multiple_hypothesis_correction"] = None
+        if "correction" not in test_block.params:
+            test_block.params["correction"] = None
     if test_type not in supported_test_types:
         print(("Warning: Unknown test type '" + test_type + "'")) 
         return False
@@ -146,6 +146,7 @@ def __name_tests(result):
     Args:
         result (list): 
     """
+    names = list() # keep track of already used names 
     num_of_tests = dict.fromkeys(supported_test_types, 0)
     for tblock in result:
         test_type = tblock.params["test_type"]
@@ -153,7 +154,10 @@ def __name_tests(result):
         suffix = ""
         if num_of_tests[test_type] > 1:
             suffix = "_" + str(num_of_tests[test_type])
-        tblock.params["test_name"] = test_type + suffix
+        if "test_name" not in tblock.params.keys() or tblock.params["test_name"] in names:    
+            tblock.params["test_name"] = test_type + suffix
+        else:
+            names.append(tblock.params["test_name"])
 
 # Public methods
 
@@ -192,6 +196,8 @@ def parse(filename):
                     general_parameters[line[0]] = line[1].rstrip() if line[1].rstrip() == "true" else None
                 elif line[0] == "interactive_plots":
                     general_parameters[line[0]] = True if line[1].rstrip().lower()[0] == "t" else False
+                elif line[0] == "static_plots":
+                    general_parameters[line[0]] = True if line[1].rstrip().lower()[0] == "t" else False
                 elif line[0] == "output_directory":
                     if line[1].rstrip() == "current":
                         general_parameters[line[0]] = os.getcwd()
@@ -201,7 +207,7 @@ def parse(filename):
                         print(("Error: Could not find directory '" + line[1].rstrip() + ".' Please check that directory is correct."))
                         sys.exit(0)
                     general_parameters[line[0]] += "/" + __create_output_dir()
-                elif line[0] == "metadata_label" and line[1].rstrip().lower() == "n/a":
+                elif line[0] == "class_label" and (line[1].rstrip().lower() == "n/a" or line[1].rstrip().lower() == ""):
                     general_parameters[line[0]] = None
                 elif line[0] != "title" and line[0] != "class_names" and line[0] != "test_type":
                     try:
@@ -242,7 +248,7 @@ def parse(filename):
                     except ValueError:
                         print("Warning: Must specify integer value for 'number_of_loadings' in PCA test.")
                         test_params[line[0]] = 0
-                elif line[0] == "metadata_label" and line[1] == "n/a":
+                elif line[0] == "class_label" and line[1] == "n/a":
                     test_params[line[0]] = None
                 elif line[0] == "class_names":
                     try: 
@@ -252,6 +258,25 @@ def parse(filename):
                             test_params[line[0]] = __string_to_dict(line[1],int_keys=False)
                         except ValueError:
                             print(("Warning: Class names improperly formated (line " + str(line_number) + ")."))
+                elif line[0] == "filter_rules":
+                    rules = line[1].rstrip().split(",")
+                    test_params[line[0]] = list()
+                    for rule in rules:
+                        label, op, value = rule.split(" ")
+                        if op == "is":
+                            op = "="
+                        elif op == "isnot":
+                            op = "!="
+                        try:                        
+                            value = float(value) 
+                        except ValueError:
+                            # value is a String
+                            pass
+                        test_params[line[0]].append((label, op, value))
+                elif line[0] == "filter_labels":
+                    test_params[line[0]] = list(line[1].rstrip().split(","))
+                elif line[0] == "test_name":
+                    test_params[line[0]] = line[1].rstrip()
                 else:
                     test_params[line[0]] = line[1].lower().rstrip()
                 

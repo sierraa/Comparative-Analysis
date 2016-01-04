@@ -9,6 +9,7 @@ Perform enrichment tests for this data and write results to a .tab file.
 
 # General imports
 import math
+import operator
 
 # Specific imports that must be pre-installed 
 from scipy import stats
@@ -57,23 +58,14 @@ def __write_to_file(output_dir, p_values, nans, fname):
     f.close()
 
 def __split_data(profile):
-    """ Split and return the abundance data into two pandas DataFrames based on
+    """ Split and return the abundance data into a list of DataFrames based on
     class and return them. 
     
     Args:
         profile: a metagenomic_profile instance 
         
     Returns:
-        Two dataframes
-    """
-    key_list = list(profile.references.keys())
-    df1 = profile.abundance_data.loc[profile.references[key_list[0]]]
-    df2 = profile.abundance_data.loc[profile.references[key_list[1]]]
-
-    return df1, df2
-    
-def __split_data2(profile):
-    """
+        list of DataFrames
     """
     dataframes = list()
     key_list = list(profile.references.keys())
@@ -107,7 +99,7 @@ def __get_means(df1, df2):
     
     return means
 
-def __bonferonni_correction(pvalues, n):
+def __bonferonni_correction(pvalues):
     """ Performs a Bonferroni correction on the data.
     
     Args:
@@ -118,19 +110,36 @@ def __bonferonni_correction(pvalues, n):
         Bonferroni corrected list of p-values.
     """
     result = list()
+    n = len(pvalues)
     
     for p in pvalues:
-        result.append(p*n)
+        p_adjust = p*n if p*n < 1.0 else 1.0
+        result.append(p_adjust)
         
     return result
     
-def __fdr_correction(pvalues, n):
-    """ FDR correction - 0.01, 0.05, 0.1
-    TO DO    
+def __fdr_correction(pvalues, FDR=0.1):
+    """ Performs Benjamini-Hochberg procedure to adjust p-values.
+    
+    Args:
+        pvalues: dictionary of p-values to be corrected, in the form {label1:p-value1, ...}
+        FDR: the false discovery rate, a float x such that 0 < x < 1 (default=0.1)
+        
+    Returns:
+        Benjamini-Hochberg adjusted p-values with corresponding attribute in a list of tuples.
     """
-    raise NotImplementedError
-
-def __enrichment(df1, df2, label1, label2, output_dir, enrichment_type):
+    sorted_values = sorted(pvalues.items(), key=operator.itemgetter(1)) # tuple representation of dict
+    result = list()
+    n = len(pvalues)
+    
+    for i in range(len(sorted_values)):
+        lbl = sorted_values[i][0]
+        p = sorted_values[i][1]
+        result.append((lbl, p * (float(n) / (i + 1))))
+    
+    return result 
+    
+def __enrichment(df1, df2, label1, label2, output_dir, enrichment_type, correction=None):
     """ Helper method to perform the enrichment.
     
     Args:
@@ -140,7 +149,9 @@ def __enrichment(df1, df2, label1, label2, output_dir, enrichment_type):
         label2 (str): Label for df2. 
         output_dir: directory output is saved to. 
         enrichment_type: type of enrichment test to perform ('ranksums' or 'ttest').
-    
+        correction: type of correction to be performed. Options: "bonferroni", "fdr-0.1", 
+            "fdr-O.05", "fdr-0.01"
+            
     Effects:
         Writes out to the output_dir a .tab file containing the p-values. 
     Returns:
@@ -161,6 +172,16 @@ def __enrichment(df1, df2, label1, label2, output_dir, enrichment_type):
             nans.append((p, attr))
         else:
             pvals.append((p, attr, directionality))
+            
+    if correction == "bonferroni":
+        ps = __bonferonni_correction([x[0] for x in pvals])
+        pvals = [(ps[i], pvals[i][1], pvals[i][2]) for i in range(len(ps))]        
+    elif correction.split("-")[0] == "fdr":
+        rate = float(correction.split("-")[1])
+        directions = dict([(pvals[i][1], pvals[i][2]) for i in range(len(pvals))]) # preserve directionality
+        ps = dict([(pvals[i][1], pvals[i][0]) for i in range(len(pvals))])
+        corrected = __fdr_correction(ps, FDR=rate)
+        pvals = [(corrected[i][1], corrected[i][0], directions[corrected[i][0]]) for i in range(len(corrected))]
     __write_to_file(output_dir, pvals, nans, enrichment_type.__name__ + ".tab")
     return output_dir + "/" + enrichment_type.__name__ + ".tab"
 
@@ -179,7 +200,7 @@ def __pairwise(profile, output_dir, enrichment_type):
     """
     output_files = list()
     reference_keys = list(profile.references.keys())
-    dataframes = __split_data2(profile)
+    dataframes = __split_data(profile)
     for i in range(len(reference_keys) - 1):
         for j in range(i + 1, len(reference_keys)):
             df1 = dataframes[i]
@@ -191,12 +212,14 @@ def __pairwise(profile, output_dir, enrichment_type):
     
 # Public methods 
 
-def ranksums(profile, output_dir):
+def ranksums(profile, output_dir, correction=None):
     """Perform the Wilcoxon Rank-Sum test. Save results to file.
     
     Args:
         profile: metagenomic profile instance.
         output_dir: directory output is saved to.
+        correction: type of correction to be performed. Options: "bonferroni", "fdr-0.1", 
+            "fdr-O.05", "fdr-0.01"
         
     Returns:
         Path to output.
@@ -214,19 +237,21 @@ def ranksums(profile, output_dir):
         dfs.to_csv(fname, sep="\t")
         return fname
     else:
-        dfs = __split_data2(profile)
+        dfs = __split_data(profile)
         df1, df2 = dfs[0], dfs[1]
         ref_keys = list(profile.references.keys())
-        return __enrichment(df1, df2, ref_keys[0], ref_keys[1], output_dir, stats.ranksums)
+        return __enrichment(df1, df2, ref_keys[0], ref_keys[1], output_dir, stats.ranksums, correction=correction)
     
 
-def ttest(profile, output_dir):
+def ttest(profile, output_dir, correction=None):
     """Perform the Student's t-test. Save results to file.
     
     Args:
         profile: metagenomic profile instance.
         output_dir: directory output is saved to.
-        
+        correction: type of correction to be performed. Options: "bonferroni", "fdr-0.1", 
+            "fdr-O.05", "fdr-0.01"
+            
     Returns:
         Path to output.
     """
@@ -243,7 +268,7 @@ def ttest(profile, output_dir):
         dfs.to_csv(fname, sep="\t")
         return fname
     else:
-        dfs = __split_data2(profile)
+        dfs = __split_data(profile)
         df1, df2 = dfs[0], dfs[1]
         ref_keys = list(profile.references.keys())
-        return __enrichment(df1, df2, ref_keys[0], ref_keys[1], output_dir, stats.ttest_ind)
+        return __enrichment(df1, df2, ref_keys[0], ref_keys[1], output_dir, stats.ttest_ind, correction=correction)

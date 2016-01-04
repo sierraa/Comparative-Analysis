@@ -52,11 +52,14 @@ class test_runner:
             dist_metric = self.block.params["distance_metric"]
             result = "PCoA with " + dist_metric + " distance metric shown.\n"
         elif self.block.get_type() == "enrichment":
-            correction = self.block.params["multiple_hypothesis_correction"]
+            correction = self.block.params["correction"]
             test = "student's t-test" if self.block.params["test"] == "ttest" else "Wilcoxon ranksums test"
             result = "Enrichment was performed using " + test + ".\n"
-            result += "" if correction == None else "Corrected with " + correction + ".\n"
-            
+            if correction == "bonferroni":
+                result += "P-values adjusted using the Bonferroni correction.\n" 
+            elif correction.split("-")[0] == "fdr":
+                result += "P-values adjusted using the Benjamini-Hochberg method using a false discovery rate = " 
+                result += correction.split("-")[1] + ".\n"
         return result
     
     def __plot_static(self):
@@ -65,22 +68,23 @@ class test_runner:
         mgprofile = self.block.metagenomic_profile
         
         if self.block.get_type() == "area_plot":
+            display_name = "Area Plot" if self.block.get_name() == self.block.get_type() else self.block.get_name()
             area_img = area_plot.area_plot(mgprofile, self.new_dir)
-            self.result = png_result(area_img, self.__generate_about(), "Area Plot", self.block.get_name())        
+            self.result = png_result(area_img, self.__generate_about(), display_name, self.block.get_name())        
         
         elif self.block.get_type() == "pca":
             loadings = int(self.block.params["number_of_loadings"])
-            
+            display_name = "PCA" if self.block.get_name() == self.block.get_type() else self.block.get_name()
             pca_img = pcoa.pca_plot(mgprofile, self.new_dir, num_of_loadings=loadings)
             self.result = png_result(pca_img, self.__generate_about(), 
-                                           "PCA", self.block.get_name())            
+                                           display_name, self.block.get_name())            
         
         elif self.block.get_type() == "pcoa":
             dist = self.block.params["distance_metric"]
-            
+            display_name = "PCoA: " + dist.capitalize() if self.block.get_name() == self.block.get_type() else self.block.get_name()
             pcoa_img = pcoa.pcoa_plot(mgprofile, self.new_dir, dist_type=dist)
             self.result = png_result(pcoa_img, self.__generate_about(), 
-                                           "PCoA: " + dist.capitalize(), self.block.get_name())
+                                           display_name, self.block.get_name())
             
             
     def __plot_dynamic(self):
@@ -90,39 +94,42 @@ class test_runner:
         
         if self.block.get_type() == "pca":
             loadings = int(self.block.params["number_of_loadings"])
-            
+            display_name = "PCA" if self.block.get_name() == self.block.get_type() else self.block.get_name()
             pca_html, lgd_png = pcoa.pca_plot_interactive(mgprofile, self.new_dir, num_of_loadings=loadings)
             self.result = html_result(pca_html, self.__generate_about(), 
-                                            "PCA", self.block.get_name(), lgd=lgd_png)
+                                            display_name, self.block.get_name(), lgd=lgd_png)
         
         elif self.block.get_type() == "pcoa":
             dist = self.block.params["distance_metric"]
-            
+            display_name = "PCoA: " + dist.capitalize() if self.block.get_name() == self.block.get_type() else self.block.get_name()
             pcoa_html, lgd_png = pcoa.pcoa_plot_interactive(mgprofile, self.new_dir, dist_type=dist)
             self.result = html_result(pcoa_html, self.__generate_about(), 
-                                            "PCoA: " + dist.capitalize(), self.block.get_name(), lgd=lgd_png)
+                                            display_name, self.block.get_name(), lgd=lgd_png)
         
         elif self.block.get_type() == "area_plot":
             x_label = ""
             for cls in list(self.block.metagenomic_profile.references.keys()):
                 x_label += cls.ljust(80) # add spaces between labels
-            
+            display_name = "Area Plot" if self.block.get_name() == self.block.get_type() else self.block.get_name()
             area_html, lgd_png = area_plot.area_plot_interactive(mgprofile, self.new_dir)
-            self.result = html_result(area_html, self.__generate_about(), "Area Plot", self.block.get_name(), lgd=lgd_png, 
+            self.result = html_result(area_html, self.__generate_about(), display_name, self.block.get_name(), lgd=lgd_png, 
                                             x_lbl=x_label)
     
     def __perform_enrichment(self):
         """ Performs a user-specified enrichment test on this metagenomic profile.
         """
         mgprofile = self.block.metagenomic_profile
+        correction_method = self.block.params["correction"]
         if self.block.params["test"] == "ranksums":
-            enrich_table = enrichment.ranksums(mgprofile, self.new_dir)
+            display_name = "Wilcoxon rank-sum test" if self.block.get_name() == self.block.get_type() else self.block.get_name()
+            enrich_table = enrichment.ranksums(mgprofile, self.new_dir, correction=correction_method)
             self.result = table_result(enrich_table, self.__generate_about(), 
-                                             "Wilcoxon rank-sum test", self.block.get_name())
+                                             display_name, self.block.get_name())
         else:
-            enrich_table = enrichment.ttest(mgprofile, self.new_dir)
+            display_name = "Student's t-test" if self.block.get_name() == self.block.get_type() else self.block.get_name()
+            enrich_table = enrichment.ttest(mgprofile, self.new_dir, correction=correction_method)
             self.result = table_result(enrich_table, self.__generate_about(), 
-                                             "Student's t-test", self.block.get_name())
+                                             display_name, self.block.get_name())
     
     def __perform_normalization(self, normalization_type, musicc_intra='use_generic'):
         """ Normalizes the data in the metagenomic profile of this test block.
@@ -145,6 +152,8 @@ class test_runner:
         if "normalization" in self.block.params: # Normalization needs to be performed 1st
             self.__perform_normalization(self.block.params["normalization"])
         if "interactive_plots" in list(self.block.gen_params.keys()) and self.block.gen_params["interactive_plots"]:
+            if "static_plots" in list(self.block.gen_params.keys()) and self.block.gen_params["static_plots"]:
+                self.__plot_static()
             self.__plot_dynamic()
         else: 
             self.__plot_static()

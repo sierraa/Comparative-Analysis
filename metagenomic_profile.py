@@ -22,7 +22,8 @@ class metagenomic_profile(object):
     """ 
     
     def __init__(self, abundance_data_path, metadata_path, a_sep='\t', m_sep='\t',
-                 metadata_header=False, metadata_label=None, class_names=None):
+                 metadata_header=False, metadata_label=None, class_names=None, 
+                 filter_rules=None, filter_labels=None):
         """Create new instance of a metagenomic profile
         
         Args:
@@ -38,15 +39,26 @@ class metagenomic_profile(object):
                 Defaults to '\t'.
             m_sep (str): separating character in the metadata file. (ex: '\t', ',').
                 Defaults to '\t'.
+            filter_rules: list of rules to filter out by, where a rule is a tuple in the 
+                form (label, operator, value)
+            filter_labels: list of labels to filter out
         """
         self.abundance_data = pd.DataFrame.from_csv(path=abundance_data_path, sep=a_sep)
-        
+
         if not metadata_header:
             self.metadata = pd.DataFrame.from_csv(path=metadata_path, sep=m_sep, header=None)
         else:
             self.metadata = pd.DataFrame.from_csv(path=metadata_path, sep=m_sep)
-        
+
         self.__check_abundance_data_shape()
+        
+        if filter_labels != None:    
+            self.__filter_samples_by_name(filter_labels)
+        
+        if filter_rules != None:
+            for rule in filter_rules:
+                label, op, val = rule
+                self.__filter_samples_by_rule(op, val, label)
                 
         if metadata_label != None:
             try: 
@@ -58,7 +70,7 @@ class metagenomic_profile(object):
         else:
             self.metadata.sort(columns=self.metadata.columns[0], inplace=True)
             self.metadata = self.metadata[self.metadata.columns[0]]
-                
+        
         # keys = class labels, values = labels of class members len(value) = class size
         self.references = dict()
         
@@ -93,7 +105,7 @@ class metagenomic_profile(object):
         
         for k in list(self.references.keys()):
             self.total_sample_count += len(self.references[k])
-    
+        
     def __check_abundance_data_shape(self):
         """ Test modules expect the abundance data to have samples as rows
         and attributes as columns. Transforms abundance data if this is not
@@ -102,6 +114,41 @@ class metagenomic_profile(object):
         if self.abundance_data.index[0] not in self.metadata.index:
             self.abundance_data = self.abundance_data.T
     
+    def __filter_samples_by_name(self, names):
+        """ Filter out samples according to label.
+        
+        Args:
+            names: list of sample labels to filter out 
+        """
+        self.abundance_data.drop(names)
+        self.metadata.drop(names)
+        
+    def __filter_samples_by_rule(self, op, value, label=None):
+        """ Filter out samples according to rule. 
+        
+        Args:
+            op: String representing the operator filtering samples ("=", "!=", ">", "<")
+            label: class label to reference in metadata, defaults to the first column if set to None 
+            value: value to compare against using operator 
+        """
+        
+        # iterate over metadata, checking rule        
+        for sample in self.metadata.index:
+            lbl = self.metadata.columns[0] if label == None else label
+            this_val = self.metadata[lbl][sample]
+            boolean = False
+            if op == "=":
+                boolean = this_val == value
+            elif op == "!=":
+                boolean = this_val != value
+            elif op == ">":
+                boolean = this_val > value 
+            elif op == "<":
+                boolean = this_val < value
+            if boolean:
+                self.abundance_data.drop(sample)
+                self.metadata.drop(sample)
+        
     def add_feature_metadata(self, path, sp='\t'):
         """ Add a third dataframe to this profile, holding feature metadata (as opposed to 
         sample metadata).
@@ -133,3 +180,11 @@ class metagenomic_profile(object):
         """
         self.abundance_data = dataframe
         self.__check_abundance_data_shape()
+        
+    def set_metadata(self, dataframe):
+        """ Sets a new metadata matrix for this metagenomic profile.
+        
+        Args:
+            dataframe (pandas.DataFrame): new metadata matrix
+        """
+        self.metadata = dataframe

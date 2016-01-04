@@ -35,7 +35,7 @@ def main():
     metadata_path = genparams["sample_metadata"]
     metadata_hdr = genparams["metadata_header"]
     output_dir = genparams["output_directory"]
-    lbl = genparams["metadata_label"]
+    lbl = genparams["class_label"]
     class_names = genparams["class_names"]
     
     # give each test block a copy of the profile
@@ -54,12 +54,14 @@ def main():
     for tb in tests:
          
         tb_class_names = tb.params["class_names"] if "class_names" in list(tb.params.keys()) else genparams["class_names"] 
-        if "metadata_label" in tb.params:
-            lbl = tb.params["metadata_label"]
-            
+        if "class_label" in tb.params:
+            lbl = tb.params["class_label"]
+        
+        rules = tb.params["filter_rules"] if "filter_rules" in tb.params else None
+        labels = tb.params["filter_labels"] if "filter_labels" in tb.params else None
         mp = mgp.metagenomic_profile(abundance_data_path, metadata_path, a_sep=abundance_sep, 
                                      m_sep=metadata_sep, metadata_header=metadata_hdr, metadata_label=lbl,
-                                     class_names=tb_class_names)
+                                     class_names=tb_class_names, filter_rules=rules, filter_labels=labels)
                                      
         if "feature_metadata" in list(genparams.keys()):
             mp.add_feature_metadata(genparams["feature_metadata"])

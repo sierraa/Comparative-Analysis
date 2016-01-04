@@ -39,10 +39,9 @@ class test_block:
         
         Args:
             mgprofile: metagenomic_profile instance containing data 
-            
         """
         self.metagenomic_profile = mgprofile
-    
+        
     def get_type(self):
         """ Return the type of test (PCOA, PCA, Area plot, Enrichment)
         """
