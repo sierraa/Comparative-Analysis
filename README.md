@@ -95,6 +95,8 @@ had a dataset with three classes of samples, we might change it to read
 
 in order to compare a new class to the control class. 
 
+If left blank or not included, names will automatically be generated for plots based on markers in metadata file. 
+
 ### Class label
 
 In many datasets, there will be several dimensions of the metadata to consider. Use this option
@@ -104,7 +106,7 @@ uses only case/control, so
         class_label=n/a
 
 suffices. If multiple metadata columns are included and "n/a" is still specified, the first column
-is chosen by default. 
+is chosen by default. The first column is also chosen in the case that the label is left blank or not included.
 
 # Output options 
 
