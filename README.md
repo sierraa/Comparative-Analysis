@@ -166,7 +166,7 @@ Filter out specific samples by their label.
 
 Filter out samples using simple logical rules. 
 
-        filter_labels=Rule1,Rule2,...
+        filter_rules=Rule1,Rule2,...
 
 A "rule" is of the form:
 
