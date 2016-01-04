@@ -73,7 +73,8 @@ to set parameters for your own data.
 ## Overriding parameters
 
 A subset of parameters are overridable, meaning they can be defined globally and be applied to all
-tests, or they can be specified for individual tests. 
+tests, or they can be specified for individual tests. These can be found in the default parameters 
+section of the sample parameters file. 
 
 ### Normalization 
 
@@ -94,15 +95,15 @@ had a dataset with three classes of samples, we might change it to read
 
 in order to compare a new class to the control class. 
 
-### Metadata label
+### Class label
 
-In many datasets, there will be several dimensions of metadata to consider. Use this option
+In many datasets, there will be several dimensions of the metadata to consider. Use this option
 to specify which dimension in the metadata file should be used to compare samples. The sample dataset
 uses only case/control, so
 
-        metadata_label=n/a
+        class_label=n/a
 
-suffices. If multiple metadata columns are included and "n/a" is still selected, the first column
+suffices. If multiple metadata columns are included and "n/a" is still specified, the first column
 is chosen by default. 
 
 # Output options 
@@ -136,6 +137,47 @@ to identify individual samples in the plots, zoom and move the data around the a
         interactive_plots=true
 
 in the plotting options section of the parameters file. When set to false, any plots will be saved as .png files.
+
+## Naming tests 
+
+Custom names can be specified for each test by including the following keyword after the test type has been specified:
+
+        test_name=My Test
+
+Test names will be used for file naming and HTML display. Test names must be unique. Note that test names must not include 
+characters forbidden in directory names. For instance, on a Windows machine, the characters 
+
+        < > : " / \ | * 
+
+are disallowed. Similarly, "=" has a special meaning in the parameters file and is also reserved. 
+
+# Filtering out samples
+
+If desired, samples can be filtered out by rule or by sample label before a test is performed. Filtering is test-specific,
+and must be included under the "test_type=..." keyword. The two filtering methods can be used in tandem if needed. 
+
+## Filtering by label
+
+Filter out specific samples by their label. 
+
+        filter_labels=Sample1,Sample2,...
+
+## Filtering by rule 
+
+Filter out samples using simple logical rules. 
+
+        filter_labels=Rule1,Rule2,...
+
+A "rule" is of the form:
+
+        Attribute Op Value
+
+Where "Attribute" is a column in the metadata matrix, "Op" is one of ">", "<", "is", or "isnot", and Value is some string or number
+that each sample will be compared against. Note that filtering by rule is only possible in datasets with multidimensional metadata. 
+
+Example:
+
+        filter_labels=AGE is 18
 
 # Statistical functions
 
@@ -225,6 +267,13 @@ Either a student's t-test or a wilcoxon ranksums test can be performed by includ
 keywords under the test definition:
 
         test=ttest      /*OR*/      test=ranksums
+
+The resulting p-values from an enrichment test can be adjusted by including the following optional keyword:
+
+        correction=bonferroni
+
+Current supported p-value adjustments include Bonferroni correction ("bonferroni") and Benjamini-Hochberg correction
+with a false discovery rate of 0.1, 0.05, or 0.01 ("fdr-0.1", "fdr-0.05", and "fdr-0.01" respectively). 
 
 ## Area plot
 
